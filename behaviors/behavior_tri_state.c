@@ -280,7 +280,6 @@ static int tri_state_layer_state_changed_listener(const zmk_event_t *eh) {
                 (struct zmk_behavior_binding *)&tri_state->config->end_behavior, event, true);
             zmk_behavior_invoke_binding(
                 (struct zmk_behavior_binding *)&tri_state->config->end_behavior, event, false);
-            return ZMK_EV_EVENT_BUBBLE;
         }
     }
     return ZMK_EV_EVENT_BUBBLE;
