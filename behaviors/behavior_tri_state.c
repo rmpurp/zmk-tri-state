@@ -243,7 +243,6 @@ static int tri_state_position_state_changed_listener(const zmk_event_t *eh) {
                     (struct zmk_behavior_binding *)&tri_state->config->continue_behavior, event, false);
             }
             trigger_end_behavior(tri_state);
-            return ZMK_EV_EVENT_BUBBLE;
         }
         if (ev->state) {
             stop_timer(tri_state);
