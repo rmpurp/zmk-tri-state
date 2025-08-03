@@ -163,6 +163,20 @@ static int on_tri_state_binding_pressed(struct zmk_behavior_binding *binding,
         tri_state->first_press = false;
     }
     zmk_behavior_invoke_binding((struct zmk_behavior_binding *)&cfg->continue_behavior, event, true);
+    
+    if (!zmk_keymap_layer_active(event->layer)) {
+        LOG_DBG("Tri-State: Tri-state was activated on layer %d, but it is no longer active. "
+                "Ending tri_state at position %d", event.layer, event.position);
+        tri_state->is_active = false;
+
+        if (tri_state->is_pressed) {
+            zmk_behavior_invoke_binding(
+                (struct zmk_behavior_binding *)&tri_state->config->continue_behavior, event, false);
+        }
+
+        trigger_end_behavior(tri_state);
+    }
+    
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
