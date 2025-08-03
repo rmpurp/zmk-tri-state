@@ -117,6 +117,7 @@ static int new_tri_state(struct zmk_behavior_binding_event *event, const struct 
             ref_tri_state->is_pressed = false;
             ref_tri_state->first_press = true;
             *tri_state = ref_tri_state;
+            LOG_DBG("New tri_state created for position %d at index %d", event->position, i);
             return 0;
         }
     }
