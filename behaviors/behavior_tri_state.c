@@ -166,9 +166,9 @@ static int on_tri_state_binding_pressed(struct zmk_behavior_binding *binding,
     
     zmk_keymap_layer_index_t active_layer = zmk_keymap_highest_layer_active();
     LOG_DBG("Tri-State: Active layer is %d (tri-state activated on layer %d)", active_layer, event.layer);
-    if (!zmk_keymap_layer_active(event.layer)) {
-        LOG_DBG("Tri-State: Tri-state was activated on layer %d, but it is no longer active. "
-                "Ending tri_state at position %d", event.layer, event.position);
+    if (active_layer == 0) {
+        LOG_DBG("Tri-State: MASSIVE HACK! Current layer is 0. Assuming tri-state is no longer active.");
+        LOG_DBG("Ending tri_state at position %d", event.position);
         tri_state->is_active = false;
 
         if (tri_state->is_pressed) {
