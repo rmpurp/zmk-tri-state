@@ -178,6 +178,8 @@ static int on_tri_state_binding_pressed(struct zmk_behavior_binding *binding,
         }
 
         trigger_end_behavior(tri_state);
+    } else {
+        LOG_DBG("Tri-State: Current layer is %d, tri-state remains active.", active_layer);
     }
     
     return ZMK_BEHAVIOR_OPAQUE;
