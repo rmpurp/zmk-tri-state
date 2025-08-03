@@ -225,6 +225,9 @@ static int tri_state_position_state_changed_listener(const zmk_event_t *eh) {
     if (ev == NULL) {
         return ZMK_EV_EVENT_BUBBLE;
     }
+
+    LOG_DBG("Tri-State tri_state_position_state_changed_listener called for position %d", ev->position);
+
     for (int i = 0; i < ZMK_BHV_MAX_ACTIVE_TRI_STATES; i++) {
         struct active_tri_state *tri_state = &active_tri_states[i];
         if (!tri_state->is_active) {
@@ -258,6 +261,9 @@ static int tri_state_layer_state_changed_listener(const zmk_event_t *eh) {
     if (ev == NULL) {
         return ZMK_EV_EVENT_BUBBLE;
     }
+    
+    LOG_DBG("Tri-State tri_state_layer_state_changed_listener called for layer change %d", ev->layer);
+    
     if (!ev->state) {
         return ZMK_EV_EVENT_BUBBLE;
     }
