@@ -152,7 +152,7 @@ static int on_tri_state_binding_pressed(struct zmk_behavior_binding *binding,
                     "active_tri_states[].");
             return ZMK_BEHAVIOR_OPAQUE;
         }
-        LOG_DBG("%d created new tri_state", event.position);
+        LOG_DBG("%d created new tri_state on layer %d", event.position, event.layer);
     }
     LOG_DBG("%d tri_state pressed", event.position);
     tri_state->is_pressed = true;
@@ -164,6 +164,8 @@ static int on_tri_state_binding_pressed(struct zmk_behavior_binding *binding,
     }
     zmk_behavior_invoke_binding((struct zmk_behavior_binding *)&cfg->continue_behavior, event, true);
     
+    zmk_keymap_layer_index_t active_layer = zmk_keymap_highest_layer_active();
+    LOG_DBG("Tri-State: Active layer is %d (tri-state activated on layer %d)", active_layer, event.layer);
     if (!zmk_keymap_layer_active(event.layer)) {
         LOG_DBG("Tri-State: Tri-state was activated on layer %d, but it is no longer active. "
                 "Ending tri_state at position %d", event.layer, event.position);
