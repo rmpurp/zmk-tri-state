@@ -269,10 +269,6 @@ static int tri_state_layer_state_changed_listener(const zmk_event_t *eh) {
     
     LOG_DBG("Tri-State tri_state_layer_state_changed_listener called for layer change %d", ev->layer);
     
-    if (!ev->state) {
-        LOG_DBG("Tri-State Layer: !ev->state is falsy");
-        return ZMK_EV_EVENT_BUBBLE;
-    }
     for (int i = 0; i < ZMK_BHV_MAX_ACTIVE_TRI_STATES; i++) {
         struct active_tri_state *tri_state = &active_tri_states[i];
         if (!tri_state->is_active) {
