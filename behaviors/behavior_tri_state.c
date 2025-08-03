@@ -231,9 +231,11 @@ static int tri_state_position_state_changed_listener(const zmk_event_t *eh) {
     for (int i = 0; i < ZMK_BHV_MAX_ACTIVE_TRI_STATES; i++) {
         struct active_tri_state *tri_state = &active_tri_states[i];
         if (!tri_state->is_active) {
+            LOG_DBG("Tri-State: tri_state %d is not active, so not interrupting", i);
             continue;
         }
         if (tri_state->position == ev->position) {
+            LOG_DBG("Tri-State: tri_state %d is active but matches position %d", i, ev->position);
             continue;
         }
         if (!is_other_key_ignored(tri_state, ev->position)) {
@@ -246,6 +248,8 @@ static int tri_state_position_state_changed_listener(const zmk_event_t *eh) {
                     (struct zmk_behavior_binding *)&tri_state->config->continue_behavior, event, false);
             }
             trigger_end_behavior(tri_state);
+        } else {
+            LOG_DBG("Tri-State: position %d is ignored for tri_state %d", ev->position, i);
         }
         if (ev->state) {
             stop_timer(tri_state);
@@ -265,11 +269,13 @@ static int tri_state_layer_state_changed_listener(const zmk_event_t *eh) {
     LOG_DBG("Tri-State tri_state_layer_state_changed_listener called for layer change %d", ev->layer);
     
     if (!ev->state) {
+        LOG_DBG("Tri-State Layer: !ev->state is falsy");
         return ZMK_EV_EVENT_BUBBLE;
     }
     for (int i = 0; i < ZMK_BHV_MAX_ACTIVE_TRI_STATES; i++) {
         struct active_tri_state *tri_state = &active_tri_states[i];
         if (!tri_state->is_active) {
+            LOG_DBG("Tri-State Layer: tri_state %d is not active, so not interrupting", i);
             continue;
         }
         if (!is_layer_ignored(tri_state, ev->layer)) {
@@ -285,6 +291,8 @@ static int tri_state_layer_state_changed_listener(const zmk_event_t *eh) {
                 (struct zmk_behavior_binding *)&tri_state->config->end_behavior, event, true);
             zmk_behavior_invoke_binding(
                 (struct zmk_behavior_binding *)&tri_state->config->end_behavior, event, false);
+        } else {
+            LOG_DBG("Tri-State Layer: layer %d is ignored for tri_state %d", ev->layer, i);
         }
     }
     return ZMK_EV_EVENT_BUBBLE;
