@@ -18,6 +18,8 @@
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/hid.h>
 
+#include "../../../../zmk/app/include/zmk/event_manager.h"
+
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define ZMK_BHV_MAX_ACTIVE_TRI_STATES 10
@@ -38,6 +40,7 @@ struct active_tri_state {
     bool is_active;
     bool is_pressed;
     bool first_press;
+    bool is_expired;
     uint32_t position;
 #if IS_ENABLED(CONFIG_ZMK_SPLIT)
     uint8_t source;
@@ -74,9 +77,15 @@ void trigger_end_behavior(struct active_tri_state *si) {
         .source = si->source,
 #endif
     };
+    LOG_INF("Tri-State: Pressing end behavior");
+    zmk_behavior_invoke_binding(
+        (struct zmk_behavior_binding *)&si->config->end_behavior, event, true);
+    LOG_INF("Tri-State: Releasing end behavior");
+    zmk_behavior_invoke_binding(
+        (struct zmk_behavior_binding *)&si->config->end_behavior, event, false);
 
-    zmk_behavior_queue_add(&event, si->config->end_behavior, true, si->config->tap_ms);
-    zmk_behavior_queue_add(&event, si->config->end_behavior, false, 0);
+    // zmk_behavior_queue_add(&event, si->config->end_behavior, true, si->config->tap_ms);
+    // zmk_behavior_queue_add(&event, si->config->end_behavior, false, 0);
 }
 
 void behavior_tri_state_timer_handler(struct k_work *item) {
@@ -85,7 +94,7 @@ void behavior_tri_state_timer_handler(struct k_work *item) {
     if (!tri_state->is_active || tri_state->timer_cancelled || tri_state->is_pressed) {
         return;
     }
-    LOG_DBG("Tri-state deactivated due to timer");
+    LOG_DBG("Tri-State: deactivated due to timer");
     tri_state->is_active = false;
     trigger_end_behavior(tri_state);
 }
@@ -116,8 +125,9 @@ static int new_tri_state(struct zmk_behavior_binding_event *event, const struct 
             ref_tri_state->is_active = true;
             ref_tri_state->is_pressed = false;
             ref_tri_state->first_press = true;
+            ref_tri_state->is_expired = false;
             *tri_state = ref_tri_state;
-            LOG_DBG("New tri_state created for position %d at index %d", event->position, i);
+            LOG_DBG("Tri-State: created for position %d at index %d", event->position, i);
             return 0;
         }
     }
@@ -142,6 +152,7 @@ static bool is_layer_ignored(struct active_tri_state *tri_state, int32_t layer) 
 
 static int on_tri_state_binding_pressed(struct zmk_behavior_binding *binding,
                                         struct zmk_behavior_binding_event event) {
+    LOG_INF("Tri-State: on_tri_state_binding_pressed Entrypoint");
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_tri_state_config *cfg = dev->config;
     struct active_tri_state *tri_state;
@@ -152,35 +163,36 @@ static int on_tri_state_binding_pressed(struct zmk_behavior_binding *binding,
                     "active_tri_states[].");
             return ZMK_BEHAVIOR_OPAQUE;
         }
-        LOG_DBG("%d created new tri_state on layer %d", event.position, event.layer);
+        LOG_DBG("  Tri-State: %d created new tri_state on layer %d", event.position, event.layer);
     }
-    LOG_DBG("%d tri_state pressed", event.position);
+    LOG_DBG("  Tri-State: %d tri_state pressed", event.position);
     tri_state->is_pressed = true;
     if (tri_state->first_press) {
-        zmk_behavior_invoke_binding((struct zmk_behavior_binding *)&cfg->start_behavior, event, true);
-        zmk_behavior_invoke_binding((struct zmk_behavior_binding *)&cfg->start_behavior,
-                                         event, false);
+        LOG_INF("  Tri-State: %d Start behavior pressed", event.position);
+        zmk_behavior_invoke_binding(&cfg->start_behavior, event, true);
+        LOG_INF("  Tri-State: %d Start behavior released", event.position);
+        zmk_behavior_invoke_binding(&cfg->start_behavior, event, false);
         tri_state->first_press = false;
     }
-    zmk_behavior_invoke_binding((struct zmk_behavior_binding *)&cfg->continue_behavior, event, true);
+
+    LOG_INF("  Tri-State: %d Continue behavior pressed", event.position);
+    zmk_behavior_invoke_binding(&cfg->continue_behavior, event, true);
     
     zmk_keymap_layer_index_t active_layer = zmk_keymap_highest_layer_active();
-    LOG_DBG("Tri-State: Active layer is %d (tri-state activated on layer %d)", active_layer, event.layer);
+    LOG_DBG("  Tri-State: Active layer is %d (tri-state activated on layer %d)", active_layer, event.layer);
     if (active_layer == 0) {
         // For some reason, it seems the event's layer is not set correctly -- it's always 0.
-        LOG_DBG("Tri-State: MASSIVE HACK! Current layer is 0. Assuming tri-state is no longer active.");
-        LOG_DBG("Ending tri_state at position %d", event.position);
+        LOG_DBG("  Tri-State: MASSIVE HACK! Current layer is 0. Assuming tri-state is no longer active.");
+        LOG_DBG("  Tri-State: Ending tri_state at position %d", event.position);
         tri_state->is_active = false;
 
-        if (tri_state->is_pressed) {
-            zmk_behavior_invoke_binding(
-                (struct zmk_behavior_binding *)&tri_state->config->continue_behavior, event, false);
-            // zmk_behavior_queue_add(&event, (struct zmk_behavior_binding *)&tri_state->config->continue_behavior, false, 0);
-        }
+        LOG_INF("  Tri-State: %d Continue behavior released", event.position);
+        zmk_behavior_invoke_binding(&tri_state->config->continue_behavior, event, false);
+        // zmk_behavior_queue_add(&event, &tri_state->config->continue_behavior, false, 0);
 
         trigger_end_behavior(tri_state);
     } else {
-        LOG_DBG("Tri-State: Current layer is %d, tri-state remains active.", active_layer);
+        LOG_DBG("  Tri-State: Current layer is %d, tri-state remains active.", active_layer);
     }
     
     return ZMK_BEHAVIOR_OPAQUE;
@@ -190,19 +202,30 @@ static void release_tri_state(struct zmk_behavior_binding_event event,
                               struct zmk_behavior_binding *continue_behavior) {
     struct active_tri_state *tri_state = find_tri_state(event.position);
     if (tri_state == NULL) {
+        LOG_DBG("Tri-State: keybind released but it's no longer active; not doing anything");
         return;
     }
     tri_state->is_pressed = false;
+    LOG_INF("  Tri-State: %d Continue behavior released", event.position);
     zmk_behavior_invoke_binding(continue_behavior, event, false);
+
+    if (tri_state->is_expired) {
+        LOG_INF("  Tri-State: %d Tri-state is expired; cleaning it up...", event.position);
+        tri_state->is_active = false;
+        trigger_end_behavior(tri_state);
+    }
+
     reset_timer(k_uptime_get(), tri_state);
 }
 
 static int on_tri_state_binding_released(struct zmk_behavior_binding *binding,
                                          struct zmk_behavior_binding_event event) {
+    LOG_INF("Tri-State: on_tri_state_binding_released Entrypoint %d tri_state keybind released", event.position);
+
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_tri_state_config *cfg = dev->config;
-    LOG_DBG("%d tri_state keybind released", event.position);
     release_tri_state(event, (struct zmk_behavior_binding *)&cfg->continue_behavior);
+
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
@@ -219,6 +242,7 @@ static int behavior_tri_state_init(const struct device *dev) {
     return 0;
 }
 
+// Seems to be one of the two entry points
 static const struct behavior_driver_api behavior_tri_state_driver_api = {
     .binding_pressed = on_tri_state_binding_pressed,
     .binding_released = on_tri_state_binding_released,
@@ -230,7 +254,7 @@ static int tri_state_layer_state_changed_listener(const zmk_event_t *eh);
 
 ZMK_LISTENER(behavior_tri_state, tri_state_listener);
 ZMK_SUBSCRIPTION(behavior_tri_state, zmk_position_state_changed);
-ZMK_SUBSCRIPTION(behavior_tri_state, zmk_layer_state_changed);
+// ZMK_SUBSCRIPTION(behavior_tri_state, zmk_layer_state_changed);
 
 static int tri_state_listener(const zmk_event_t *eh) {
     if (as_zmk_position_state_changed(eh) != NULL) {
@@ -247,30 +271,38 @@ static int tri_state_position_state_changed_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-    LOG_DBG("Tri-State tri_state_position_state_changed_listener called for position %d", ev->position);
+    LOG_INF("Tri-State Listener: Change for position %d", ev->position);
 
     for (int i = 0; i < ZMK_BHV_MAX_ACTIVE_TRI_STATES; i++) {
         struct active_tri_state *tri_state = &active_tri_states[i];
         if (!tri_state->is_active) {
-            LOG_DBG("Tri-State: tri_state %d is not active, so not interrupting", i);
             continue;
         }
+
+        if (tri_state->is_pressed) {
+            // Tri-state will be cleaned up when the key is released
+            tri_state->is_expired = true;
+        }
+
         if (tri_state->position == ev->position) {
-            LOG_DBG("Tri-State: tri_state %d is active but matches position %d", i, ev->position);
+            LOG_DBG("  Tri-State: tri_state %d is active but matches position %d", i, ev->position);
             continue;
         }
         if (!is_other_key_ignored(tri_state, ev->position)) {
-            LOG_DBG("Tri-State interrupted, ending at %d %d", tri_state->position, ev->position);
+            LOG_DBG("  Tri-State interrupted, ending at %d %d", tri_state->position, ev->position);
             tri_state->is_active = false;
             struct zmk_behavior_binding_event event = {.position = tri_state->position,
                                                        .timestamp = k_uptime_get()};
             if (tri_state->is_pressed) {
+                LOG_INF("  Tri-State: %d Continue behavior released", event.position);
                 zmk_behavior_invoke_binding(
                     (struct zmk_behavior_binding *)&tri_state->config->continue_behavior, event, false);
+            } else {
+                LOG_DBG("  Tri-State was not pressed.");
             }
             trigger_end_behavior(tri_state);
         } else {
-            LOG_DBG("Tri-State: position %d is ignored for tri_state %d", ev->position, i);
+            LOG_DBG("  Tri-State: position %d is ignored for tri_state %d", ev->position, i);
         }
         if (ev->state) {
             stop_timer(tri_state);
@@ -287,13 +319,12 @@ static int tri_state_layer_state_changed_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     
-    LOG_DBG("Tri-State tri_state_layer_state_changed_listener called for layer change %d", ev->layer);
+    LOG_DBG("Tri-State called for layer change %d", ev->layer);
     
     for (int i = 0; i < ZMK_BHV_MAX_ACTIVE_TRI_STATES; i++) {
         struct active_tri_state *tri_state = &active_tri_states[i];
         if (!tri_state->is_active) {
-            LOG_DBG("Tri-State Layer: tri_state %d is not active, so not interrupting", i);
-            continue;
+             continue;
         }
         if (!is_layer_ignored(tri_state, ev->layer)) {
             LOG_DBG("Tri-State layer changed, ending at %d %d", tri_state->position, ev->layer);
@@ -301,13 +332,17 @@ static int tri_state_layer_state_changed_listener(const zmk_event_t *eh) {
             struct zmk_behavior_binding_event event = {.position = tri_state->position,
                                                        .timestamp = k_uptime_get()};
             if (tri_state->is_pressed) {
+                LOG_INF("Tri-State: Continue behavior released");
                 zmk_behavior_invoke_binding(
                     (struct zmk_behavior_binding *)&tri_state->config->continue_behavior, event, false);
+            } else {
+                LOG_DBG("Tri-State was not pressed.");
             }
-            zmk_behavior_invoke_binding(
-                (struct zmk_behavior_binding *)&tri_state->config->end_behavior, event, true);
-            zmk_behavior_invoke_binding(
-                (struct zmk_behavior_binding *)&tri_state->config->end_behavior, event, false);
+            trigger_end_behavior(tri_state);
+            // zmk_behavior_invoke_binding(
+            //     (struct zmk_behavior_binding *)&tri_state->config->end_behavior, event, true);
+            // zmk_behavior_invoke_binding(
+            //     (struct zmk_behavior_binding *)&tri_state->config->end_behavior, event, false);
         } else {
             LOG_DBG("Tri-State Layer: layer %d is ignored for tri_state %d", ev->layer, i);
         }
