@@ -192,7 +192,7 @@ static int on_tri_state_binding_pressed(struct zmk_behavior_binding *binding,
 
 static int on_tri_state_binding_released(struct zmk_behavior_binding *binding,
                                          struct zmk_behavior_binding_event event) {
-    LOG_INF("Tri-State: on_tri_state_binding_released Entrypoint %d tri_state keybind released", event.position);
+    LOG_DBG("Tri-State: on_tri_state_binding_released Entrypoint %d tri_state keybind released", event.position);
 
     struct active_tri_state *tri_state = find_tri_state(event.position);
 
@@ -253,7 +253,7 @@ static int tri_state_position_state_changed_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-    LOG_INF("Tri-State Listener: Change for position %d", ev->position);
+    LOG_INF("Tri-State Listener: Change for position %d: %s", ev->position, ev->state ? "pressed" : "released");
 
     for (int i = 0; i < ZMK_BHV_MAX_ACTIVE_TRI_STATES; i++) {
         struct active_tri_state *tri_state = &active_tri_states[i];
@@ -261,32 +261,35 @@ static int tri_state_position_state_changed_listener(const zmk_event_t *eh) {
             continue;
         }
 
-        if (tri_state->is_pressed) {
-            // Tri-state will be cleaned up when the key is released
-            tri_state->is_expired = true;
-        }
-
         if (tri_state->position == ev->position) {
             LOG_DBG("  Tri-State: tri_state %d is active but matches position %d", i, ev->position);
             continue;
         }
+
+
         if (!is_other_key_ignored(tri_state, ev->position)) {
-            LOG_DBG("  Tri-State interrupted, ending at %d %d", tri_state->position, ev->position);
-            tri_state->is_active = false;
-
-            // TODO: is creating this event the cause of the mismatch??? Why not fill in layer???
-
-            struct zmk_behavior_binding_event event = {.position = tri_state->position,
-                                                       .timestamp = k_uptime_get()};
             if (tri_state->is_pressed) {
-                release_continue_behavior(tri_state, event);
+                // Tri-state will be cleaned up when the key is released
+                tri_state->is_expired = true;
             } else {
-                LOG_DBG("  Tri-State was not pressed.");
+                LOG_DBG("  Tri-State interrupted, ending at %d %d", tri_state->position, ev->position);
+                tri_state->is_active = false;
+
+                // TODO: is creating this event the cause of the mismatch??? Why not fill in layer???
+
+                struct zmk_behavior_binding_event event = {.position = tri_state->position,
+                                                           .timestamp = k_uptime_get()};
+                if (tri_state->is_pressed) {
+                    release_continue_behavior(tri_state, event);
+                } else {
+                    LOG_DBG("  Tri-State was not pressed.");
+                }
+                trigger_end_behavior(tri_state);
             }
-            trigger_end_behavior(tri_state);
         } else {
             LOG_DBG("  Tri-State: position %d is ignored for tri_state %d", ev->position, i);
         }
+
         if (ev->state) {
             stop_timer(tri_state);
         } else {
@@ -297,6 +300,7 @@ static int tri_state_position_state_changed_listener(const zmk_event_t *eh) {
 }
 
 static void invoke_start_behavior(const ActiveTriState *tri_state, const struct zmk_behavior_binding_event event) {
+    LOG_INF("Tri-State: %d Invoking start behavior", event.position);
     zmk_behavior_invoke_binding(&tri_state->config->start_behavior, event, true);
     zmk_behavior_invoke_binding(&tri_state->config->start_behavior, event, false);
 }
